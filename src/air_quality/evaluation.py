@@ -18,9 +18,11 @@ def regression_metrics(y_true, y_pred) -> dict[str, float]:
     Returns:
     - dict with keys "rmse", "mae", "r2"
     """
-    # TODO: compute RMSE (the square root of mean_squared_error), MAE and R2,
-    # and return them in a dict with keys "rmse", "mae", "r2"
-
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae = mean_absolute_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+    dict_metrics = {"rmse": rmse, "mae": mae, "r2": r2}
+    return dict_metrics
 
 def evaluate_manual_split(
     model,
@@ -42,9 +44,13 @@ def evaluate_manual_split(
     Returns:
     - dict of regression metrics (see regression_metrics), computed on test_df
     """
-    # TODO: fit model on train_df's features/target, predict on test_df's
-    # features, then return regression_metrics computed against test_df's
-    # true target
+    X_train = train_df[feature_cols]
+    Y_train = train_df[target_col]
+    X_test = test_df[feature_cols]
+    Y_test = test_df[target_col]
+    model.fit(X_train, Y_train)
+    Y_pred = model.predict(X_test)
+    return regression_metrics(Y_test, Y_pred)
 
 
 # ============================================================================
