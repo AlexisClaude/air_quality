@@ -39,3 +39,7 @@ where = ["src"]
 
 [tool.uv]
 default-groups = []
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
