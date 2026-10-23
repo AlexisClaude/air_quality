@@ -17,8 +17,9 @@ def load_datasets(data_dir: Path = DEFAULT_DATA_DIR) -> tuple[pd.DataFrame, pd.D
     Returns:
     - (train_df, test_df): the two DataFrames, loaded as-is
     """
-    # TODO: read train.csv and test.csv from data_dir with pd.read_csv, and
-    # return them as a (train_df, test_df) tuple
+    train_df = pd.read_csv(data_dir / "train.csv")
+    test_df = pd.read_csv(data_dir / "test.csv")
+    return train_df, test_df
 
 
 def restrict_to_scope(
@@ -41,11 +42,17 @@ def restrict_to_scope(
     Returns:
     - DataFrame filtered to the given cities and columns, index reset
     """
-    # TODO: filter df to the given cities and columns, then, if max_rows_per_city
-    # is set, draw a reproducible random sample of at most that many rows for
-    # each city and concatenate the results back into a single DataFrame
+    df_scoped = df.loc[df["city"].isin(cities), columns]
 
+    if max_rows_per_city is not None:
+        samples = []
+        for city in cities:
+            city_df = df_scoped.loc[df_scoped["city"] == city]
+            sample_size = min(len(city_df), max_rows_per_city)
+            samples.append(city_df.sample(n=sample_size, random_state=random_state))
+        df_scoped = pd.concat(samples)
 
+    return df_scoped.reset_index(drop=True)
 
 
 def fill_missing_by_city(
@@ -66,10 +73,17 @@ def fill_missing_by_city(
     Returns:
     - DataFrame with the given columns filled, one city at a time
     """
-    # TODO: sort by city_col and date_col, then for each column, group by
-    # city_col and apply forward-fill followed by backward-fill within each
-    # group with groupby().transform() — never fill across cities
+    df_filled = df.copy()
+    df_filled[date_col] = pd.to_datetime(df_filled[date_col])
+    df_sorted = df_filled.sort_values([city_col, date_col])
+    fill_columns = [column for column in columns if column not in (city_col, date_col)]
 
+    if fill_columns:
+        df_sorted[fill_columns] = df_sorted.groupby(city_col)[fill_columns].transform(
+            lambda group: group.ffill().bfill()
+        )
+
+    return df_sorted
 
 # ============================================================================
 # Session 3 — optional modules (not needed for Session 2's practical_3)
