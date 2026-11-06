@@ -1,4 +1,4 @@
-"""Command-line entry point for the Air Quality baseline pipeline."""
+"""Command-line entry point for the advanced Air Quality pipeline."""
 
 import argparse
 import json
@@ -8,11 +8,11 @@ from pathlib import Path
 # Make the src-layout package importable when this script is run from a checkout.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from air_quality.workflows import PipelineConfig, run_baseline
+from air_quality.workflows import AdvancedPipelineConfig, run_advanced
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the Air Quality baseline pipeline")
+    parser = argparse.ArgumentParser(description="Run the advanced Air Quality pipeline")
     parser.add_argument("--train-city", default="Kampala")
     parser.add_argument("--test-city", default="Nairobi")
     return parser.parse_args()
@@ -20,8 +20,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    config = PipelineConfig(train_city=args.train_city, test_city=args.test_city)
-    metrics = run_baseline(config)
+    config = AdvancedPipelineConfig(train_city=args.train_city, test_city=args.test_city)
+    metrics = run_advanced(config)
     print(json.dumps(metrics, indent=2))
 
 
