@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 from sklearn.linear_model import LinearRegression
 
-from air_quality import data, evaluation, features
+from air_quality import data, evaluation, features, selection
 
 DEFAULT_COLUMNS = [
     "city",
@@ -82,8 +82,9 @@ class AdvancedPipelineConfig:
     cities: list[str] = field(
         default_factory=lambda: ["Kampala", "Nairobi", "Lagos", "Bujumbura"]
     )
-    columns: list[str] = field(default_factory=lambda: list(DEFAULT_COLUMNS))
+    columns: list[str] | None = None
     missing_threshold: float = 0.7
+    n_features_to_select: int = 8
 
 
 def run_advanced(config: AdvancedPipelineConfig | None = None) -> dict:
@@ -95,8 +96,8 @@ def run_advanced(config: AdvancedPipelineConfig | None = None) -> dict:
 
     There is deliberately no automated test for it: its correct shape depends on
     which optional modules you have added, something no fixed test could know in
-    advance. Verify it by calling it from a notebook or a Python shell and
-    checking that the printed metrics make sense for whatever you have built so far.
+    advance. Verify it by running scripts/run_pipeline.py and checking that the
+    printed metrics make sense for whatever you have built so far.
 
     Parameters:
     - config: pipeline settings; a default AdvancedPipelineConfig() is used if omitted
@@ -107,10 +108,11 @@ def run_advanced(config: AdvancedPipelineConfig | None = None) -> dict:
     config = config or AdvancedPipelineConfig()
     train_df, _ = data.load_datasets()
 
+    columns = config.columns or train_df.columns.tolist()
     scoped = data.restrict_to_scope(
         train_df,
         config.cities,
-        config.columns,
+        columns,
     )
     columns_to_drop = data.columns_above_missing_threshold(
         scoped,
@@ -124,15 +126,20 @@ def run_advanced(config: AdvancedPipelineConfig | None = None) -> dict:
     cleaned = data.fill_missing_by_city(cleaned, fillable_columns)
     enriched = features.add_temporal_features(cleaned)
 
-    #train_split = enriched[enriched["city"] == config.train_city]
-    #test_split = enriched[enriched["city"] == config.test_city]
     feature_cols = features.feature_columns(enriched)
+    selected_features = selection.select_features_rfe(
+        model=LinearRegression(),
+        df=enriched,
+        feature_cols=feature_cols,
+        target_col="pm2_5",
+        n_features_to_select=config.n_features_to_select,
+    )
 
     model = LinearRegression()
     return evaluation.evaluate_group_cv(
         model,
         enriched,
-        feature_cols,
+        selected_features,
         groups_col="city",
         target_col="pm2_5",
     )
