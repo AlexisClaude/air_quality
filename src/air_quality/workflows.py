@@ -2,9 +2,11 @@
 
 from dataclasses import dataclass, field
 
+from xgboost import XGBRegressor
+
 from sklearn.linear_model import LinearRegression
 
-from air_quality import data, evaluation, features, selection
+from air_quality import data, evaluation, features, selection, tuning
 
 DEFAULT_COLUMNS = [
     "city",
@@ -135,7 +137,19 @@ def run_advanced(config: AdvancedPipelineConfig | None = None) -> dict:
         n_features_to_select=config.n_features_to_select,
     )
 
-    model = LinearRegression()
+    tuning_result = tuning.tune_xgboost(
+        enriched,
+        feature_cols=selected_features,
+        param_grid={"max_depth": [3, 5], "learning_rate": [0.05, 0.2]},
+        target_col="pm2_5",
+        groups_col="city",
+    )
+
+    model = XGBRegressor(
+        n_estimators=100,
+        random_state=42,
+        **tuning_result["best_params"],
+    )
     return evaluation.evaluate_group_cv(
         model,
         enriched,
