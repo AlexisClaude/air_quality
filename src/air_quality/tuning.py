@@ -39,15 +39,35 @@ def tune_xgboost(
     - dict with "best_params" (the grid point with lowest RMSE), "best_rmse",
       and "cv_results" (one {"params", "rmse", "mae", "r2"} entry per grid point)
     """
-    # TODO: run GridSearchCV(XGBRegressor(n_estimators=100, random_state=42),
-    # param_grid, cv=GroupKFold(n_splits=df[groups_col].nunique()), scoring={
-    # "rmse": "neg_root_mean_squared_error", "mae": "neg_mean_absolute_error",
-    # "r2": "r2"}, refit="rmse") — refit picks the best combination by rmse,
-    # but every combination still gets all three metrics recorded in
-    # grid.cv_results_["mean_test_rmse"/"mean_test_mae"/"mean_test_r2"]. Fit
-    # it passing groups=df[groups_col], then build the return dict from
-    # grid.best_params_/grid.best_score_/grid.cv_results_ (rmse/mae come back
-    # negative from "neg_..." scorers — negate them back to plain values; r2
-    # does not need negating)
+    from xgboost import XGBRegressor
+
+    scoring = {
+        "rmse": "neg_root_mean_squared_error",
+        "mae": "neg_mean_absolute_error",
+        "r2": "r2",
+    }
+    grid = GridSearchCV(
+        estimator=XGBRegressor(n_estimators=100, random_state=42),
+        param_grid=param_grid,
+        cv=GroupKFold(n_splits=df[groups_col].nunique()),
+        scoring=scoring,
+        refit="rmse",
+    )
+    grid.fit(df[feature_cols], df[target_col], groups=df[groups_col])
+
+    cv_results = [
+        {"params": params, "rmse": -rmse, "mae": -mae, "r2": r2}
+        for params, rmse, mae, r2 in zip(
+            grid.cv_results_["params"],
+            grid.cv_results_["mean_test_rmse"],
+            grid.cv_results_["mean_test_mae"],
+            grid.cv_results_["mean_test_r2"],
+        )
+    ]
+    return {
+        "best_params": grid.best_params_,
+        "best_rmse": -grid.best_score_,
+        "cv_results": cv_results,
+    }
 
 
