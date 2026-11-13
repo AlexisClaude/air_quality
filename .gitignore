@@ -17,6 +17,9 @@ data/
 *.pickle
 *.joblib
 
+# Local MLflow experiment runs
+mlruns/
+
 # Python package metadata
 *.egg-info/
 
