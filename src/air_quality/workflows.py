@@ -2,11 +2,13 @@
 
 from dataclasses import dataclass, field
 
-from xgboost import XGBRegressor
-
+import numpy as np
 from sklearn.linear_model import LinearRegression
+from sklearn.feature_selection import RFE
+from sklearn.model_selection import GroupKFold, cross_validate
+from sklearn.pipeline import Pipeline
 
-from air_quality import data, evaluation, features, selection, tuning
+from air_quality import data, evaluation, features, transformers
 
 DEFAULT_COLUMNS = [
     "city",
@@ -85,7 +87,7 @@ class AdvancedPipelineConfig:
         default_factory=lambda: ["Kampala", "Nairobi", "Lagos", "Bujumbura"]
     )
     columns: list[str] | None = None
-    missing_threshold: float = 0.7
+    missing_threshold: float = 0.6
     n_features_to_select: int = 8
 
 
@@ -110,50 +112,74 @@ def run_advanced(config: AdvancedPipelineConfig | None = None) -> dict:
     config = config or AdvancedPipelineConfig()
     train_df, _ = data.load_datasets()
 
-    columns = config.columns or train_df.columns.tolist()
+    excluded_columns = {"id", "site_id", "country", "month"}
+    columns = config.columns or [
+        column for column in train_df.columns if column not in excluded_columns
+    ]
     scoped = data.restrict_to_scope(
         train_df,
         config.cities,
         columns,
     )
-    columns_to_drop = data.columns_above_missing_threshold(
-        scoped,
-        threshold=config.missing_threshold,
-    )
-    cleaned = data.drop_columns(scoped, columns_to_drop)
+    enriched = features.add_temporal_features(scoped)
+    X = enriched.drop(columns="pm2_5")
+    y = enriched["pm2_5"]
+    groups = enriched["city"]
 
-    fillable_columns = [
-        column for column in cleaned.columns if column not in ("city", "date")
+    pipeline = Pipeline(
+        steps=[
+            (
+                "cleaner",
+                transformers.AirQualityCleaner(
+                    missing_threshold=config.missing_threshold
+                ),
+            ),
+            (
+                "selector",
+                RFE(
+                    estimator=LinearRegression(),
+                    n_features_to_select=config.n_features_to_select,
+                ),
+            ),
+            ("model", LinearRegression()),
+        ]
+    )
+    splitter = GroupKFold(n_splits=groups.nunique())
+    cv_results = cross_validate(
+        pipeline,
+        X,
+        y,
+        groups=groups,
+        cv=splitter,
+        scoring={
+            "rmse": "neg_root_mean_squared_error",
+            "mae": "neg_mean_absolute_error",
+            "r2": "r2",
+        },
+        error_score="raise",
+    )
+    test_groups = [
+        groups.iloc[test_idx].iloc[0]
+        for _, test_idx in splitter.split(X, y, groups)
     ]
-    cleaned = data.fill_missing_by_city(cleaned, fillable_columns)
-    enriched = features.add_temporal_features(cleaned)
-
-    feature_cols = features.feature_columns(enriched)
-    selected_features = selection.select_features_rfe(
-        model=LinearRegression(),
-        df=enriched,
-        feature_cols=feature_cols,
-        target_col="pm2_5",
-        n_features_to_select=config.n_features_to_select,
-    )
-
-    tuning_result = tuning.tune_xgboost(
-        enriched,
-        feature_cols=selected_features,
-        param_grid={"max_depth": [3, 5], "learning_rate": [0.05, 0.2]},
-        target_col="pm2_5",
-        groups_col="city",
-    )
-
-    model = XGBRegressor(
-        n_estimators=100,
-        random_state=42,
-        **tuning_result["best_params"],
-    )
-    return evaluation.evaluate_group_cv(
-        model,
-        enriched,
-        selected_features,
-        groups_col="city",
-        target_col="pm2_5",
-    )
+    metric_scores = {
+        "rmse": -cv_results["test_rmse"],
+        "mae": -cv_results["test_mae"],
+        "r2": cv_results["test_r2"],
+    }
+    results = {
+        "folds": [
+            {
+                "test_group": test_group,
+                **{
+                    metric: float(scores[index])
+                    for metric, scores in metric_scores.items()
+                },
+            }
+            for index, test_group in enumerate(test_groups)
+        ]
+    }
+    for metric, scores in metric_scores.items():
+        results[f"{metric}_mean"] = float(np.mean(scores))
+        results[f"{metric}_std"] = float(np.std(scores))
+    return results
