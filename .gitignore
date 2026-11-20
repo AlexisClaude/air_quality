@@ -30,3 +30,6 @@ mlruns/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local MLflow store created by the Module 9 registry demo notebook
+mlruns_registry_demo/
