@@ -41,9 +41,10 @@ class AirQualityCleaner(BaseEstimator, TransformerMixin):
         Returns:
         - self, so fit can be chained as fit(X).transform(X)
         """
-        # TODO: set self.columns_to_drop_ to
-        # data.columns_above_missing_threshold(X, self.missing_threshold),
-        # then return self
+        self.columns_to_drop_ = data.columns_above_missing_threshold(
+            X, threshold=self.missing_threshold
+        )
+        return self
 
     def transform(self, X):
         """
@@ -58,7 +59,12 @@ class AirQualityCleaner(BaseEstimator, TransformerMixin):
         - DataFrame of numeric feature columns only (see features.feature_columns),
           with self.columns_to_drop_ removed and missing values filled per city
         """
-        # TODO: drop self.columns_to_drop_ from X with data.drop_columns, fill
-        # what remains per city with data.fill_missing_by_city (every column
-        # except "city"/"date"), then return only the numeric feature columns
-        # (features.feature_columns) of the result
+        cleaned = data.drop_columns(X, self.columns_to_drop_)
+        fillable_columns = [
+            column for column in cleaned.columns if column not in ("city", "date")
+        ]
+        cleaned = data.fill_missing_by_city(cleaned, fillable_columns)
+        # fill_missing_by_city sorts by city/date; a transformer must preserve
+        # row order so X remains aligned with y inside a scikit-learn Pipeline.
+        cleaned = cleaned.loc[X.index]
+        return cleaned[features.feature_columns(cleaned)]
